@@ -180,7 +180,7 @@ export default function App() {
   return (
     <div className="wrap">
       <div className="topbar">
-        <h1>TO DO (ACTIVITIES) APP</h1>
+        <h1>TASK MANAGER APP</h1>
         {isAuthed ? <button onClick={logout}>Logout</button> : null}
       </div>
 
