@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
-
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem("token") || "");
@@ -12,6 +11,15 @@ export default function App() {
 
   const [tasks, setTasks] = useState([]);
   const [title, setTitle] = useState("");
+
+  // UI-first task metadata (backend persistence comes later)
+  const [priority, setPriority] = useState("medium"); // low | medium | high
+  const [status, setStatus] = useState("todo"); // todo | in_progress | done
+  const [dueDate, setDueDate] = useState(""); // yyyy-mm-dd
+
+  // list controls
+  const [filterStatus, setFilterStatus] = useState("all"); // all | todo | in_progress | done
+  const [sortBy, setSortBy] = useState("newest"); // newest | due_date | priority
 
   const [editingId, setEditingId] = useState(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -28,7 +36,7 @@ export default function App() {
     setError("");
 
     const res = await fetch(`${API}/api/tasks`, {
-      headers: authHeaders()
+      headers: authHeaders(),
     });
 
     const data = await res.json();
@@ -53,7 +61,7 @@ export default function App() {
     const res = await fetch(`${API}/api/auth/${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password }),
     });
 
     const data = await res.json();
@@ -89,7 +97,12 @@ export default function App() {
     const res = await fetch(`${API}/api/tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ title: trimmed })
+      body: JSON.stringify({
+        title: trimmed,
+        priority,
+        status,
+        dueDate: dueDate || null,
+      }),
     });
 
     const data = await res.json();
@@ -100,6 +113,9 @@ export default function App() {
 
     setTasks((prev) => [data, ...prev]);
     setTitle("");
+    setPriority("medium");
+    setStatus("todo");
+    setDueDate("");
   }
 
   async function deleteTask(id) {
@@ -107,7 +123,7 @@ export default function App() {
 
     const res = await fetch(`${API}/api/tasks/${id}`, {
       method: "DELETE",
-      headers: authHeaders()
+      headers: authHeaders(),
     });
 
     const data = await res.json();
@@ -125,7 +141,7 @@ export default function App() {
     const res = await fetch(`${API}/api/tasks/${task.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ completed: !task.completed })
+      body: JSON.stringify({ completed: !task.completed }),
     });
 
     const data = await res.json();
@@ -161,7 +177,7 @@ export default function App() {
     const res = await fetch(`${API}/api/tasks/${taskId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ title: trimmed })
+      body: JSON.stringify({ title: trimmed }),
     });
 
     const data = await res.json();
@@ -170,12 +186,39 @@ export default function App() {
       return;
     }
 
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, title: trimmed } : t))
-    );
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, title: trimmed } : t)));
 
     cancelEdit();
   }
+
+  const visibleTasks = useMemo(() => {
+    const priorityRank = { high: 3, medium: 2, low: 1 };
+
+    return (tasks ?? [])
+      .filter((t) => {
+        const s = t.status ?? "todo";
+        return filterStatus === "all" ? true : s === filterStatus;
+      })
+      .sort((a, b) => {
+        if (sortBy === "priority") {
+          const ap = priorityRank[a.priority ?? "medium"] ?? 2;
+          const bp = priorityRank[b.priority ?? "medium"] ?? 2;
+          return bp - ap;
+        }
+
+        if (sortBy === "due_date") {
+          const ad = a.dueDate ?? a.due_date ?? "";
+          const bd = b.dueDate ?? b.due_date ?? "";
+          if (!ad && !bd) return 0;
+          if (!ad) return 1;
+          if (!bd) return -1;
+          return ad.localeCompare(bd);
+        }
+
+        // newest default (by id desc)
+        return (b.id ?? 0) - (a.id ?? 0);
+      });
+  }, [tasks, filterStatus, sortBy]);
 
   return (
     <div className="wrap">
@@ -216,30 +259,64 @@ export default function App() {
             <button type="submit">{mode === "register" ? "Create account" : "Login"}</button>
           </form>
 
-          <p className="hint">
-            Tip: Register first, then login. Tasks are private per user.
-          </p>
+          <p className="hint">Tip: Register first, then login. Tasks are private per user.</p>
         </div>
       ) : (
         <>
-          <form onSubmit={addTask} className="row">
+          <form onSubmit={addTask} className="row" style={{ flexWrap: "wrap", gap: 10 }}>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="New task..."
             />
+
+            <select value={priority} onChange={(e) => setPriority(e.target.value)}>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+
+            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="todo">To do</option>
+              <option value="in_progress">In progress</option>
+              <option value="done">Done</option>
+            </select>
+
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+
             <button type="submit">Add</button>
           </form>
 
+          <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
+            <label>
+              Filter:
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                style={{ marginLeft: 8 }}
+              >
+                <option value="all">All</option>
+                <option value="todo">To do</option>
+                <option value="in_progress">In progress</option>
+                <option value="done">Done</option>
+              </select>
+            </label>
+
+            <label>
+              Sort:
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ marginLeft: 8 }}>
+                <option value="newest">Newest</option>
+                <option value="due_date">Due date</option>
+                <option value="priority">Priority</option>
+              </select>
+            </label>
+          </div>
+
           <ul className="list">
-            {tasks.map((t) => (
+            {visibleTasks.map((t) => (
               <li key={t.id} className="item">
                 <label className="left">
-                  <input
-                    type="checkbox"
-                    checked={!!t.completed}
-                    onChange={() => toggleCompleted(t)}
-                  />
+                  <input type="checkbox" checked={!!t.completed} onChange={() => toggleCompleted(t)} />
 
                   {editingId === t.id ? (
                     <input
@@ -248,7 +325,16 @@ export default function App() {
                       onChange={(e) => setEditingTitle(e.target.value)}
                     />
                   ) : (
-                    <span className={t.completed ? "done" : ""}>{t.title}</span>
+                    <div>
+                      <span className={t.completed ? "done" : ""}>{t.title}</span>
+                      <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
+                        <span>Priority: {t.priority ?? "medium"}</span>
+                        <span style={{ marginLeft: 10 }}>Status: {t.status ?? "todo"}</span>
+                        <span style={{ marginLeft: 10 }}>
+                          Due: {t.dueDate ?? t.due_date ?? "—"}
+                        </span>
+                      </div>
+                    </div>
                   )}
                 </label>
 
