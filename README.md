@@ -1,4 +1,4 @@
-# Full-Stack Task Manager Application
+# Full-Stack Client session tracker Application
 
 A production-style full-stack web application featuring user authentication and task management. Built with a React frontend and a Node.js/Express backend, using SQLite for data persistence and JWT for secure authentication.
 
